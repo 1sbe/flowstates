@@ -1,0 +1,13 @@
+<h1>Notes</h1>
+<form (submit)="addNote(title.value, content.value)">
+  <input #title placeholder="Title" required>
+  <textarea #content placeholder="Content" required></textarea>
+  <button type="submit">Add Note</button>
+</form>
+
+<ul>
+  <li *ngFor="let note of notes">
+    <h2>{{ note.title }}</h2>
+    <p>{{ note.content }}</p>
+  </li>
+</ul>
