@@ -4,11 +4,12 @@
   "extends": "./tsconfig.json",
   "compilerOptions": {
     "outDir": "./out-tsc/app",
-    "types": []
+    "types": [],
+    "lib": ["es6", "dom"]
   },
   "include": [
     "src/**/*.ts"
-  ],
+, "src/app/assets/scripts/flip.js"  ],
   "exclude": [
     "src/**/*.spec.ts"
   ]

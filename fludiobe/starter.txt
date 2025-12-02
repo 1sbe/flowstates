@@ -1,0 +1,4 @@
+
+## gunicorn --certfile=/path/to/your/certificate.crt --keyfile=/path/to/your/private.key your_module:your_wsgi_app -b 0.0.0.0:py
+
+python3 -m gunicorn fludiobe.wsgi:application

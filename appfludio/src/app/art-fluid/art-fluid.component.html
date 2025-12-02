@@ -1,0 +1,87 @@
+<div class="ui" id="ui" #ui>
+  <details style="margin-left: 3%; cursor:pointer;">
+    <summary>About</summary>
+    Art Fluid Simulator<br>By Sebastian Norback. <br><br>
+    This is a fork of Matthias Muller's physics tutorial on how to make a 2d flip fluid.<br>
+    <a href="https://github.com/matthias-research/pages/blob/master/tenMinutePhysics/18-flip.html" style="color:greenyellow">
+      Link to Matthias' Repo <br>
+    </a>
+  </details>
+
+  <div class="ui-column-1">
+    <br>
+    Click and drag anywhere in the box to start.<br><br>
+    keys:<br>
+    p - pause/play<br>
+    m - move one frame<br>
+    w - move ball up<br>
+    a - move ball left<br>
+    s - move ball down<br>
+    d - move ball right<br>
+    e - jet up<br>
+    r - jet down<br>
+    t - jet right<br>
+    y - jet left<br>
+    f - full screen
+  </div>
+
+  <div class="ui-column-2">
+    <input type="checkbox" [checked]="scene.showParticles" (change)="scene.showParticles = !scene.showParticles">Particles &nbsp;
+    <input type="checkbox" (change)="scene.showGrid = !scene.showGrid">Grid &nbsp;<br>
+    <input type="checkbox" [checked]="scene.compensateDrift" (change)="scene.compensateDrift = !scene.compensateDrift">Compensate Drift &nbsp;
+    <input type="checkbox" [checked]="scene.separateParticles" (change)="scene.separateParticles = !scene.separateParticles">Separate Particles &nbsp;<br>
+
+    PIC
+    <!-- Use $any to avoid template parser issues and + to coerce to number -->
+    <input type="range" min="0" max="10" value="5" class="slider"
+           (input)="onFlipRatioChange(0.1 * +$any($event.target).value)"> FLIP<br>
+
+    Threshold
+    <input type="range" min="0" max="100" value="80" class="slider"
+           (input)="onThresholdChange(0.01 * +$any($event.target).value)"> <br>
+
+    Gravity
+    <input type="range" min="-10" max="10" value="8" class="slider"
+           (input)="scene.gravity = 0.1 * +$any($event.target).value"> <br>
+
+    background color:<br>
+    <input type="range" min="0" max="255" value="20" class="slider" #redFrame
+           (input)="updateBackgroundColor((redFrame.valueAsNumber), greenFrame.valueAsNumber, blueFrame.valueAsNumber)">
+    <input type="range" min="0" max="255" value="50" class="slider" #greenFrame
+           (input)="updateBackgroundColor((redFrame.valueAsNumber), greenFrame.valueAsNumber, blueFrame.valueAsNumber)">
+    <input type="range" min="0" max="255" value="35" class="slider" #blueFrame
+           (input)="updateBackgroundColor((redFrame.valueAsNumber), greenFrame.valueAsNumber, blueFrame.valueAsNumber)">
+    <div id="colorOutput">RGB</div>
+  </div>
+
+  <div class="ui-column-3">
+    tank color:<br>
+    <input type="range" min="0" max="10" value="1" class="slider" #sliderR
+           (input)="updateClearColor(sliderR.valueAsNumber, sliderG.valueAsNumber, sliderB.valueAsNumber)">
+    <input type="range" min="0" max="10" value="3.5" class="slider" #sliderG
+           (input)="updateClearColor(sliderR.valueAsNumber, sliderG.valueAsNumber, sliderB.valueAsNumber)">
+    <input type="range" min="0" max="10" value="2" class="slider" #sliderB
+           (input)="updateClearColor(sliderR.valueAsNumber, sliderG.valueAsNumber, sliderB.valueAsNumber)">
+
+    <br>
+    low density: <br>
+    <input type="range" min="0" max="10" value="10" class="slider" #sliderLowr (input)="updateLowRGB(sliderLowr.valueAsNumber, sliderLowg.valueAsNumber, sliderLowb.valueAsNumber)">
+    <input type="range" min="0" max="10" value="5" class="slider" #sliderLowg (input)="updateLowRGB(sliderLowr.valueAsNumber, sliderLowg.valueAsNumber, sliderLowb.valueAsNumber)">
+    <input type="range" min="0" max="10" value="0" class="slider" #sliderLowb (input)="updateLowRGB(sliderLowr.valueAsNumber, sliderLowg.valueAsNumber, sliderLowb.valueAsNumber)">
+    <br>
+
+    hi density:<br>
+    <input type="range" min="0" max="10" value="4" class="slider" #sliderHighr (input)="updateHighRGB(sliderHighr.valueAsNumber, sliderHighg.valueAsNumber, sliderHighb.valueAsNumber)">
+    <input type="range" min="0" max="10" value="0" class="slider" #sliderHighg (input)="updateHighRGB(sliderHighr.valueAsNumber, sliderHighg.valueAsNumber, sliderHighb.valueAsNumber)">
+    <input type="range" min="0" max="10" value="3" class="slider" #sliderHighb (input)="updateHighRGB(sliderHighr.valueAsNumber, sliderHighg.valueAsNumber, sliderHighb.valueAsNumber)">
+    <br>
+
+    ball:<br>
+    <input type="range" min="0" max="10" value="10" class="slider" #ballSliderR (input)="updateBallRGB(ballSliderR.valueAsNumber, ballSliderG.valueAsNumber, ballSliderB.valueAsNumber)">
+    <input type="range" min="0" max="10" value="5" class="slider" #ballSliderG (input)="updateBallRGB(ballSliderR.valueAsNumber, ballSliderG.valueAsNumber, ballSliderB.valueAsNumber)">
+    <input type="range" min="0" max="10" value="0" class="slider" #ballSliderB (input)="updateBallRGB(ballSliderR.valueAsNumber, ballSliderG.valueAsNumber, ballSliderB.valueAsNumber)">
+  </div>
+</div>
+
+<br>
+<canvas id="myCanvas" #myCanvas style="border:1px solid"></canvas>

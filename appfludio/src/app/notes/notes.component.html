@@ -6,8 +6,10 @@
 </form>
 
 <ul>
-  <li *ngFor="let note of notes">
-    <h2>{{ note.title }}</h2>
-    <p>{{ note.content }}</p>
-  </li>
+  @for (note of notes; track note) {
+    <li>
+      <h2>{{ note.title }}</h2>
+      <p>{{ note.content }}</p>
+    </li>
+  }
 </ul>
