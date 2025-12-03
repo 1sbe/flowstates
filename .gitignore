@@ -8,22 +8,21 @@
 
 /node_modules/
 
-# Only exists if Bazel was run
 /bazel-out/
 
-# IDEs and editors
 .idea/
 .vscode/
 *.iml
 *.iws
 *.ipr
 
-# Environment variables
 .env
 .env.*
 
-# Log files
 *.log
 
-# Miscellaneous
 .angular/cache
+
+stopper.sh
+
+server-stopper.sh

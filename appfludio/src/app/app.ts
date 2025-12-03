@@ -15,5 +15,5 @@ import { ArtFluidComponent } from './art-fluid/art-fluid.component';
   
 })
 export class App {
-  protected readonly title = signal('Full Stack Fluid Sim');
+  protected readonly title = signal('Flowstates: Full Stack Fluid Sim');
 }
