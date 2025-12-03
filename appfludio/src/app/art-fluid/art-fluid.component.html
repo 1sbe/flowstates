@@ -9,6 +9,30 @@
     </a>
   </details>
 
+  <div style="grid-column: 3; text-align: right; padding-right: 2vw;">
+  
+<ng-container *ngIf="!(auth.isAuthenticated$() | async)">
+      <button (click)="router.navigate(['/login'])">Login</button>
+    </ng-container>
+
+    <ng-container *ngIf="auth.isAuthenticated$() | async">
+      <!-- changed: call openSavePrompt() instead of inline prompt(...) -->
+      <button (click)="openSavePrompt()">Save state</button>
+      <button (click)="loadSavedStates()">Load states</button>
+      <button (click)="auth.logout()">Logout</button>
+    </ng-container>
+
+    <div *ngIf="savedList?.length">
+      <small>Saved:</small>
+      <ul>
+        <li *ngFor="let s of savedList">
+          <a href="#" (click)="loadState(s.id); $event.preventDefault();">{{ s.name || s.id }}</a>
+        </li>
+      </ul>
+    </div>
+
+</div>
+
   <div class="ui-column-1">
     <br>
     Click and drag anywhere in the box to start.<br><br>

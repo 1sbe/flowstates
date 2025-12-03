@@ -1,10 +1,21 @@
 import {
-  Component, ElementRef, ViewChild, AfterViewInit, OnDestroy, Renderer2
+  Component,
+  ElementRef,
+  ViewChild,
+  AfterViewInit,
+  OnDestroy,
+  Renderer2
 } from '@angular/core';
+import { CommonModule } from '@angular/common';
 import { FlipFluid, FlipFluidConfig } from './flip-fluid';
+import { AuthService } from '../core/auth.service';
+import { StateService, SimState } from '../core/state.service';
+import { Router } from '@angular/router';
 
 @Component({
   selector: 'app-art-fluid',
+  standalone: true,
+  imports: [CommonModule],
   templateUrl: './art-fluid.component.html',
   styleUrls: ['./art-fluid.component.scss']
 })
@@ -16,7 +27,7 @@ export class ArtFluidComponent implements AfterViewInit, OnDestroy {
   gl!: WebGLRenderingContext;
   animationFrameId: number | null = null;
 
-  // simulation / scene state
+  // scene (kept simple typing)
   scene: any = {
     gravity: -0.3,
     dt: 1.0 / 60.0,
@@ -39,9 +50,9 @@ export class ArtFluidComponent implements AfterViewInit, OnDestroy {
     fluid: null as FlipFluid | null
   };
 
-  // GL & buffers/shaders
-  pointShader: WebGLProgram | null = null;
-  meshShader: WebGLProgram | null = null;
+  // GL & buffers/shaders (kept public as previously)
+pointShader: WebGLProgram | null = null;
+meshShader: WebGLProgram | null = null;
 
   pointVertexBuffer: WebGLBuffer | null = null;
   pointColorBuffer: WebGLBuffer | null = null;
@@ -75,7 +86,11 @@ export class ArtFluidComponent implements AfterViewInit, OnDestroy {
 
   pointerDown = false;
 
-  // shaders sources (full GLSL strings)
+  // saved states list
+  savedList: SimState[] = [];
+  loadingSaves = false;
+
+  // shader sources (full GLSL strings)
   pointVertexShader = `
     attribute vec2 attrPosition;
     attribute vec3 attrColor;
@@ -137,7 +152,13 @@ export class ArtFluidComponent implements AfterViewInit, OnDestroy {
     }
   `;
 
-  constructor(private renderer: Renderer2) {}
+  // NOTE: make auth and router public so template can access them
+  constructor(
+    private renderer: Renderer2,
+    public auth: AuthService,
+    public stateService: StateService,
+    public router: Router
+  ) {}
 
   ngAfterViewInit(): void {
     this.canvas = this.canvasRef.nativeElement;
@@ -184,21 +205,8 @@ export class ArtFluidComponent implements AfterViewInit, OnDestroy {
       }
     });
 
-    this.renderer.listen(document, 'keydown', (ev: KeyboardEvent) => {
-      switch (ev.key) {
-        case 'p': this.scene.paused = !this.scene.paused; break;
-        case 'm': this.scene.paused = false; this.simulate(); this.scene.paused = true; break;
-        case 'f': if (this.canvas.requestFullscreen) this.canvas.requestFullscreen(); break;
-        case 'e': this.scene.obstacleVelY = 3; break;
-        case 'r': this.scene.obstacleVelY = -3; break;
-        case 't': this.scene.obstacleVelX = 3; break;
-        case 'y': this.scene.obstacleVelX = -3; break;
-        case 'w': this.scene.obstacleY += 0.1; break;
-        case 'a': this.scene.obstacleX -= 0.1; break;
-        case 's': this.scene.obstacleY -= 0.1; break;
-        case 'd': this.scene.obstacleX += 0.1; break;
-      }
-    });
+    // centralised keyboard handling (use public method onKey)
+    this.renderer.listen(document, 'keydown', (ev: KeyboardEvent) => this.onKey(ev));
 
     // start loop
     this.update();
@@ -208,9 +216,148 @@ export class ArtFluidComponent implements AfterViewInit, OnDestroy {
     if (this.animationFrameId !== null) cancelAnimationFrame(this.animationFrameId);
   }
 
+  // ---------- keyboard handler (public) ----------
+  onKey(ev: KeyboardEvent) {
+    const key = (ev.key || '').toLowerCase();
+    switch (key) {
+      case 'p': this.scene.paused = !this.scene.paused; break;
+      case 'm': this.scene.paused = false; this.simulate(); this.scene.paused = true; break;
+      case 'f': if (this.canvas.requestFullscreen) this.canvas.requestFullscreen(); break;
+      case 'e': this.scene.obstacleVelY = 3; break;    // jet up
+      case 'r': this.scene.obstacleVelY = -3; break;   // jet down
+      case 't': this.scene.obstacleVelX = 3; break;    // jet right
+      case 'y': this.scene.obstacleVelX = -3; break;   // jet left
+      case 'w': this.scene.obstacleY += 0.1; break;
+      case 'a': this.scene.obstacleX -= 0.1; break;
+      case 's': this.scene.obstacleY -= 0.1; break;
+      case 'd': this.scene.obstacleX += 0.1; break;
+    }
+  }
+
+  // ---------- Save / Load functionality (public methods used by template) ----------
+  openSavePrompt() {
+    const name = window.prompt('Name for state', 'My State');
+    if (name !== null) {
+      this.saveState(name || 'My State');
+    }
+  }
+
+  saveState(name: string = 'My State') {
+    if (!this.auth.getToken()) {
+      // not logged in; route to login
+      this.router.navigate(['/login']);
+      return;
+    }
+
+    const payload = this.serializeState();
+    const state: SimState = { name, payload };
+
+    this.stateService.create(state).subscribe({
+      next: res => {
+        // refresh list after save
+        this.loadSavedStates();
+        console.log('Saved state', res);
+      },
+      error: err => {
+        console.error('save failed', err);
+      }
+    });
+  }
+
+  loadSavedStates() {
+    if (!this.auth.getToken()) return;
+    this.loadingSaves = true;
+    this.stateService.list().subscribe({
+      next: list => { this.savedList = list; this.loadingSaves = false; },
+      error: () => { this.loadingSaves = false; }
+    });
+  }
+
+  loadState(id: number | undefined) {
+    if (id === undefined || id === null) return;
+    this.stateService.get(id).subscribe({
+      next: s => {
+        this.applyStatePayload(s.payload);
+      },
+      error: err => console.error('load failed', err)
+    });
+  }
+
+  applyStatePayload(payload: any) {
+    if (!payload) return;
+    const p = payload;
+    if (typeof p.gravity === 'number') this.scene.gravity = p.gravity;
+    if (typeof p.flipRatio === 'number') this.scene.flipRatio = p.flipRatio;
+    if (p.threshold !== undefined) this.threshold = p.threshold;
+    if (Array.isArray(p.clearColor) && p.clearColor.length >= 3) {
+      this.clearColor[0] = p.clearColor[0];
+      this.clearColor[1] = p.clearColor[1];
+      this.clearColor[2] = p.clearColor[2];
+    }
+    if (p.low) { this.lowr = p.low.r; this.lowg = p.low.g; this.lowb = p.low.b; }
+    if (p.high) { this.highr = p.high.r; this.highg = p.high.g; this.highb = p.high.b; }
+    if (p.ball) { this.ballr = p.ball.r; this.ballg = p.ball.g; this.ballb = p.ball.b; }
+    if (typeof p.showParticles === 'boolean') this.scene.showParticles = p.showParticles;
+    if (typeof p.showGrid === 'boolean') this.scene.showGrid = p.showGrid;
+    // You may want to force a re-render or reinitialize some buffers if necessary
+  }
+
+  serializeState() {
+    return {
+      gravity: this.scene.gravity,
+      flipRatio: this.scene.flipRatio,
+      threshold: this.threshold,
+      clearColor: [this.clearColor[0], this.clearColor[1], this.clearColor[2]],
+      low: { r: this.lowr, g: this.lowg, b: this.lowb },
+      high: { r: this.highr, g: this.highg, b: this.highb },
+      ball: { r: this.ballr, g: this.ballg, b: this.ballb },
+      showParticles: this.scene.showParticles,
+      showGrid: this.scene.showGrid
+    };
+  }
+
+  // ---------- helper: create shader program ----------
+  createShader(vsSource: string, fsSource: string): WebGLProgram | null {
+    const gl = this.gl;
+    const vs = gl.createShader(gl.VERTEX_SHADER)!;
+    gl.shaderSource(vs, vsSource);
+    gl.compileShader(vs);
+    if (!gl.getShaderParameter(vs, gl.COMPILE_STATUS)) {
+      console.error('VS compile ERROR:', gl.getShaderInfoLog(vs));
+      console.error('VS source (first 200 chars):', vsSource.slice(0, 200));
+    }
+
+    const fs = gl.createShader(gl.FRAGMENT_SHADER)!;
+    gl.shaderSource(fs, fsSource);
+    gl.compileShader(fs);
+    if (!gl.getShaderParameter(fs, gl.COMPILE_STATUS)) {
+      console.error('FS compile ERROR:', gl.getShaderInfoLog(fs));
+      console.error('FS source (first 200 chars):', fsSource.slice(0, 200));
+    }
+
+    const program = gl.createProgram()!;
+    gl.attachShader(program, vs);
+    gl.attachShader(program, fs);
+    gl.linkProgram(program);
+
+    if (!gl.getProgramParameter(program, gl.LINK_STATUS)) {
+      console.error('Program link ERROR:', gl.getProgramInfoLog(program));
+    }
+
+    return program;
+  }
+
   // ---------- setup scene (creates FlipFluid) ----------
   setupScene() {
+    this.scene.obstacleRadius = 0.1;
+    this.scene.overRelaxation = 1.2;
+
+    this.scene.dt = 1.0 / 60.0;
+    this.scene.numPressureIters = 50;
+    this.scene.numParticleIters = 2;
+
     const res = 120;
+
     const tankHeight = 1.0 * this.simHeight;
     const tankWidth = 1.0 * this.simWidth;
     const h = tankHeight / res;
@@ -219,13 +366,13 @@ export class ArtFluidComponent implements AfterViewInit, OnDestroy {
     const relWaterHeight = 0.7;
     const relWaterWidth = 0.7;
 
-    const r = 0.4 * h;
+    const r = 0.4 * h; // particle radius w.r.t. cell size
     const dx = 2.0 * r;
     const dy = Math.sqrt(3.0) / 2.0 * dx;
 
     const numX = Math.floor((relWaterWidth * tankWidth - 2.0 * h - 2.0 * r) / dx);
     const numY = Math.floor((relWaterHeight * tankHeight - 2.0 * h - 2.0 * r) / dy);
-    const maxParticles = numX * numY;
+    const maxParticles = Math.max(1, numX * numY);
 
     const config: FlipFluidConfig = {
       threshold: this.threshold,
@@ -234,8 +381,9 @@ export class ArtFluidComponent implements AfterViewInit, OnDestroy {
     };
 
     const f = new FlipFluid(density, tankWidth, tankHeight, h, r, maxParticles, config);
+
     // create particles
-    f.numParticles = numX * numY;
+    f.numParticles = Math.max(0, numX * numY);
     let p = 0;
     for (let i = 0; i < numX; i++) {
       for (let j = 0; j < numY; j++) {
@@ -248,36 +396,41 @@ export class ArtFluidComponent implements AfterViewInit, OnDestroy {
     const n = f.fNumY;
     for (let i = 0; i < f.fNumX; i++) {
       for (let j = 0; j < f.fNumY; j++) {
-        let s = 1.0;
-        if (i === 0 || i === f.fNumX - 1 || j === 0) s = 0.0;
+        let s = 1.0; // fluid
+        if (i === 0 || i === f.fNumX - 1 || j === 0) s = 0; // solid
         f.s[i * n + j] = s;
       }
     }
 
-    // set obstacle in a default position
     this.setObstacle(4.0 / this.cScale, 2.0 / this.cScale, true, f);
 
     this.scene.fluid = f;
   }
 
-  // ---------- obstacle (null-safe) ----------
+  // ---------- obstacle ----------
   setObstacle(x: number, y: number, reset: boolean, fParam?: FlipFluid) {
     const fluid = fParam ?? this.scene.fluid;
-    if (!fluid) return; // guard for undefined fluid
-    let vx = 0.0, vy = 0.0;
+    if (!fluid) return;
+    let vx = 0.0;
+    let vy = 0.0;
+
     if (!reset) {
       vx = (x - this.scene.obstacleX) / this.scene.dt;
       vy = (y - this.scene.obstacleY) / this.scene.dt;
     }
+
     this.scene.obstacleX = x;
     this.scene.obstacleY = y;
     const r = this.scene.obstacleRadius;
     const n = fluid.fNumY;
+
     for (let i = 1; i < fluid.fNumX - 2; i++) {
       for (let j = 1; j < fluid.fNumY - 2; j++) {
         fluid.s[i * n + j] = 1.0;
+
         const dx = (i + 0.5) * fluid.h - x;
         const dy = (j + 0.5) * fluid.h - y;
+
         if (dx * dx + dy * dy < r * r) {
           fluid.s[i * n + j] = 0.0;
           fluid.u[i * n + j] = vx;
@@ -287,6 +440,7 @@ export class ArtFluidComponent implements AfterViewInit, OnDestroy {
         }
       }
     }
+
     this.scene.showObstacle = true;
     this.scene.obstacleVelX = vx;
     this.scene.obstacleVelY = vy;
@@ -344,41 +498,6 @@ export class ArtFluidComponent implements AfterViewInit, OnDestroy {
   }
 
   // ---------- draw ----------
-  createShader(vsSource: string, fsSource: string): WebGLProgram | null {
-    const gl = this.gl;
-
-    const vs = gl.createShader(gl.VERTEX_SHADER)!;
-    gl.shaderSource(vs, vsSource);
-    gl.compileShader(vs);
-    if (!gl.getShaderParameter(vs, gl.COMPILE_STATUS)) {
-      const info = gl.getShaderInfoLog(vs);
-      console.error('VS compile ERROR:', info);
-      // helpful to see the source around line 1 if there's a hidden char
-      console.error('VS source (first 120 chars):', vsSource.slice(0, 120));
-      // continue so program creation will also show errors
-    }
-
-    const fs = gl.createShader(gl.FRAGMENT_SHADER)!;
-    gl.shaderSource(fs, fsSource);
-    gl.compileShader(fs);
-    if (!gl.getShaderParameter(fs, gl.COMPILE_STATUS)) {
-      const info = gl.getShaderInfoLog(fs);
-      console.error('FS compile ERROR:', info);
-      console.error('FS source (first 120 chars):', fsSource.slice(0, 120));
-    }
-
-    const program = gl.createProgram()!;
-    gl.attachShader(program, vs);
-    gl.attachShader(program, fs);
-    gl.linkProgram(program);
-
-    if (!gl.getProgramParameter(program, gl.LINK_STATUS)) {
-      console.error('Program link ERROR:', gl.getProgramInfoLog(program));
-    }
-
-    return program;
-  }
-
   draw() {
     const gl = this.gl;
     if (!gl || !this.scene.fluid) return;
@@ -389,13 +508,15 @@ export class ArtFluidComponent implements AfterViewInit, OnDestroy {
 
     gl.viewport(0, 0, gl.canvas.width, gl.canvas.height);
 
-    if (!this.pointShader) this.pointShader = this.createShader(this.pointVertexShader, this.pointFragmentShader);
-    if (!this.meshShader) this.meshShader = this.createShader(this.meshVertexShader, this.meshFragmentShader);
+if (this.pointShader == null)
+  this.pointShader = this.createShader(this.pointVertexShader, this.pointFragmentShader)!;
+if (this.meshShader == null)
+  this.meshShader = this.createShader(this.meshVertexShader, this.meshFragmentShader)!;
 
     const f = this.scene.fluid;
 
-    // grid buffer
-    if (!this.gridVertBuffer) {
+    // grid
+    if (this.gridVertBuffer == null) {
       this.gridVertBuffer = gl.createBuffer();
       const cellCenters = new Float32Array(2 * f.fNumCells);
       let p = 0;
@@ -410,15 +531,16 @@ export class ArtFluidComponent implements AfterViewInit, OnDestroy {
       gl.bindBuffer(gl.ARRAY_BUFFER, null);
     }
 
-    if (!this.gridColorBuffer) this.gridColorBuffer = gl.createBuffer();
+    if (this.gridColorBuffer == null)
+      this.gridColorBuffer = gl.createBuffer();
 
-    // draw grid if enabled
     if (this.scene.showGrid) {
-      const pointSize = 0.9 * f.h / this.simWidth * this.canvas.width;
-      gl.useProgram(this.pointShader);
+      const pointSize = 0.9 * this.scene.fluid.h / this.simWidth * this.canvas.width;
+
+      gl.useProgram(this.pointShader!);
       gl.uniform2f(gl.getUniformLocation(this.pointShader!, 'domainSize'), this.simWidth, this.simHeight);
       gl.uniform1f(gl.getUniformLocation(this.pointShader!, 'pointSize'), pointSize);
-      gl.uniform1f(gl.getUniformLocation(this.pointShader!, 'drawDisk'), 0.0);
+      gl.uniform1f(gl.getUniformLocation(this.pointShader, 'drawDisk'), 0.0);
 
       gl.bindBuffer(gl.ARRAY_BUFFER, this.gridVertBuffer);
       const posLoc = gl.getAttribLocation(this.pointShader!, 'attrPosition');
@@ -426,53 +548,60 @@ export class ArtFluidComponent implements AfterViewInit, OnDestroy {
       gl.vertexAttribPointer(posLoc, 2, gl.FLOAT, false, 0, 0);
 
       gl.bindBuffer(gl.ARRAY_BUFFER, this.gridColorBuffer);
-      gl.bufferData(gl.ARRAY_BUFFER, f.cellColor, gl.DYNAMIC_DRAW);
-      const colorLoc = gl.getAttribLocation(this.pointShader!, 'attrColor');
+      gl.bufferData(gl.ARRAY_BUFFER, this.scene.fluid.cellColor, gl.DYNAMIC_DRAW);
+
+      const colorLoc = gl.getAttribLocation(this.pointShader, 'attrColor');
       gl.enableVertexAttribArray(colorLoc);
       gl.vertexAttribPointer(colorLoc, 3, gl.FLOAT, false, 0, 0);
 
-      gl.drawArrays(gl.POINTS, 0, f.fNumCells);
+      gl.drawArrays(gl.POINTS, 0, this.scene.fluid.fNumCells);
 
       gl.disableVertexAttribArray(posLoc);
       gl.disableVertexAttribArray(colorLoc);
+
       gl.bindBuffer(gl.ARRAY_BUFFER, null);
     }
 
-    // draw particles
+    // water
     if (this.scene.showParticles) {
       gl.clear(gl.DEPTH_BUFFER_BIT);
-      const pointSize = 2.2 * f.particleRadius / this.simWidth * this.canvas.width;
+
+      const pointSize = 2.2 * this.scene.fluid.particleRadius / this.simWidth * this.canvas.width;
 
       gl.useProgram(this.pointShader);
-      gl.uniform2f(gl.getUniformLocation(this.pointShader!, 'domainSize'), this.simWidth, this.simHeight);
-      gl.uniform1f(gl.getUniformLocation(this.pointShader!, 'pointSize'), pointSize);
-      gl.uniform1f(gl.getUniformLocation(this.pointShader!, 'drawDisk'), 1.0);
+      gl.uniform2f(gl.getUniformLocation(this.pointShader, 'domainSize'), this.simWidth, this.simHeight);
+      gl.uniform1f(gl.getUniformLocation(this.pointShader, 'pointSize'), pointSize);
+      gl.uniform1f(gl.getUniformLocation(this.pointShader, 'drawDisk'), 1.0);
 
-      if (!this.pointVertexBuffer) this.pointVertexBuffer = gl.createBuffer();
-      if (!this.pointColorBuffer) this.pointColorBuffer = gl.createBuffer();
+      if (this.pointVertexBuffer == null) this.pointVertexBuffer = gl.createBuffer();
+      if (this.pointColorBuffer == null) this.pointColorBuffer = gl.createBuffer();
 
       gl.bindBuffer(gl.ARRAY_BUFFER, this.pointVertexBuffer);
-      gl.bufferData(gl.ARRAY_BUFFER, f.particlePos, gl.DYNAMIC_DRAW);
-      const posLoc = gl.getAttribLocation(this.pointShader!, 'attrPosition');
+      gl.bufferData(gl.ARRAY_BUFFER, this.scene.fluid.particlePos, gl.DYNAMIC_DRAW);
+
+      const posLoc = gl.getAttribLocation(this.pointShader, 'attrPosition');
       gl.enableVertexAttribArray(posLoc);
       gl.vertexAttribPointer(posLoc, 2, gl.FLOAT, false, 0, 0);
 
       gl.bindBuffer(gl.ARRAY_BUFFER, this.pointColorBuffer);
-      gl.bufferData(gl.ARRAY_BUFFER, f.particleColor, gl.DYNAMIC_DRAW);
-      const colorLoc = gl.getAttribLocation(this.pointShader!, 'attrColor');
+      gl.bufferData(gl.ARRAY_BUFFER, this.scene.fluid.particleColor, gl.DYNAMIC_DRAW);
+
+      const colorLoc = gl.getAttribLocation(this.pointShader, 'attrColor');
       gl.enableVertexAttribArray(colorLoc);
       gl.vertexAttribPointer(colorLoc, 3, gl.FLOAT, false, 0, 0);
 
-      gl.drawArrays(gl.POINTS, 0, f.numParticles);
+      gl.drawArrays(gl.POINTS, 0, this.scene.fluid.numParticles);
 
       gl.disableVertexAttribArray(posLoc);
       gl.disableVertexAttribArray(colorLoc);
+
       gl.bindBuffer(gl.ARRAY_BUFFER, null);
     }
 
-    // draw disk (obstacle)
+    // disk
     const numSegs = 100;
-    if (!this.diskVertBuffer) {
+
+    if (this.diskVertBuffer == null) {
       this.diskVertBuffer = gl.createBuffer();
       const dphi = 2.0 * Math.PI / numSegs;
       const diskVerts = new Float32Array(2 * numSegs + 2);
@@ -495,17 +624,19 @@ export class ArtFluidComponent implements AfterViewInit, OnDestroy {
         diskIds[p++] = 1 + i;
         diskIds[p++] = 1 + (i + 1) % numSegs;
       }
+
       gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, this.diskIdBuffer);
       gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, diskIds, gl.DYNAMIC_DRAW);
       gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, null);
     }
 
     const diskColor = [this.ballr, this.ballg, this.ballb];
+
     gl.useProgram(this.meshShader);
     gl.uniform2f(gl.getUniformLocation(this.meshShader!, 'domainSize'), this.simWidth, this.simHeight);
     gl.uniform3f(gl.getUniformLocation(this.meshShader!, 'color'), diskColor[0], diskColor[1], diskColor[2]);
     gl.uniform2f(gl.getUniformLocation(this.meshShader!, 'translation'), this.scene.obstacleX, this.scene.obstacleY);
-    gl.uniform1f(gl.getUniformLocation(this.meshShader!, 'scale'), this.scene.obstacleRadius + f.particleRadius);
+    gl.uniform1f(gl.getUniformLocation(this.meshShader!, 'scale'), this.scene.obstacleRadius + this.scene.fluid!.particleRadius);
 
     const posLocMesh = gl.getAttribLocation(this.meshShader!, 'attrPosition');
     gl.enableVertexAttribArray(posLocMesh);
