@@ -26,3 +26,24 @@
 stopper.sh
 
 server-stopper.sh
+
+*.pyc
+__pycache__/
+
+venv/
+env/
+
+db.sqlite3
+
+
+
+
+local_settings.py
+
+.idea/
+.vscode/
+
+.DS_Store # macOS
+Thumbs.db # Windows
+
+*.log
