@@ -13,10 +13,11 @@ import { CommonModule } from '@angular/common';
 })
 export class LoginComponent {
   form: FormGroup;
-  error: string | null = null;
   loading = false;
+  error: string | null = null;
 
   constructor(private fb: FormBuilder, private auth: AuthService, private router: Router) {
+    // initialize form in constructor so FormBuilder is available
     this.form = this.fb.group({
       username: [''],
       password: ['']
@@ -24,17 +25,22 @@ export class LoginComponent {
   }
 
   submit() {
-    this.error = null;
     this.loading = true;
-    const { username, password } = this.form.value;
+    this.error = null;
+
+    const username = (this.form.value?.username ?? '') as string;
+    const password = (this.form.value?.password ?? '') as string;
+
     this.auth.login(username, password).subscribe({
       next: () => {
         this.loading = false;
-        this.router.navigate(['/']); // go home
+        // navigate home (or wherever you prefer)
+        this.router.navigate(['/']);
       },
-      error: err => {
+      error: (err) => {
         this.loading = false;
-        this.error = (err?.error && err.error.detail) ? err.error.detail : 'Login failed';
+        // surface a helpful message
+        this.error = err?.error?.detail || err?.error?.message || err?.message || 'Login failed';
       }
     });
   }
