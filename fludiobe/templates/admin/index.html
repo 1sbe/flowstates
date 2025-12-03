@@ -1,0 +1,32 @@
+{% extends "admin/base_site.html" %}
+{% load i18n %}
+
+{# Minimal override of the admin index that reuses the built-in app list renderer.
+   When there are no apps (the "You don't have permission..." message), add a
+   link to the simstates API for users who are staff. #}
+
+{% block content %}
+  <h1>{{ site_title|default:_('Django administration') }}</h1>
+
+  {% if app_list %}
+    {# Render the standard app list template so the admin looks and behaves normally #}
+    {% include "admin/app_list.html" %}
+  {% else %}
+    <p>{% trans "Sign in to admin successful. Use the link below to view and adjust your saved states from the frontend." %}</p>
+
+    {# Show the simstates API link only to staff users #}
+    {% if request.user and request.user.is_staff %}
+      <div class="module" style="margin-top:1rem;">
+        <h2>{% trans "Staff tools" %}</h2>
+        <ul>
+          <li>
+            <a href="/api/simstates/" target="_blank" rel="noopener">
+              {% trans "View simstates API" %}
+            </a>
+            <span class="help">{% trans "Open the simstates API endpoint (JSON) in a new tab." %}</span>
+          </li>
+        </ul>
+      </div>
+    {% endif %}
+  {% endif %}
+{% endblock %}

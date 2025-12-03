@@ -1,4 +1,4 @@
-<body style="color: #fff; background-color: black; width: 97vw; overflow-x: hidden;">
+<body style="color: #fff; background-color: rgba(1,1,1,0); width: 97vw; overflow-x: hidden;">
 <div class="ui" id="ui" #ui>
   <details style="padding-left: 3%; cursor:pointer;">
     <summary>About</summary>
@@ -11,10 +11,10 @@
               Navier Stokes Existence and Smoothness Problem
     </a>.
     <br><Br>
-    This problem is all about turbulence. You can see turbulent flow in this simulation by turning the "FLIP" slider all the way up.
+    This problem is deeply related to the phenomenon of turbulence. You can see an approximation of turbulent flow in this simulation by turning the "FLIP" slider all the way up.
     <br><br>
 
-    For now, simulations like these are the best we can do.
+    Particle Color changes will only take effect after the simulator starts. Ball, Tank and Background color changes will take effect immediately. 
   </details>
 
   <div style="grid-column: 3; text-align: right; padding-right: 2vw;">
@@ -24,7 +24,11 @@
     </ng-container>
 
     <ng-container *ngIf="auth.isAuthenticated$() | async">
-      <!-- changed: call openSavePrompt() instead of inline prompt(...) -->
+          <div class="user-info">
+    Welcome
+            <strong>{{ (auth.user$ | async)?.username || ' ' }}</strong>
+          </div>
+
       <button (click)="openSavePrompt()">Save state</button>
       <button (click)="loadSavedStates()">Load states</button>
       <button (click)="auth.logout()">Logout</button>
@@ -32,9 +36,9 @@
 
     <div *ngIf="savedList?.length">
       <small>Saved:</small>
-      <ul>
+      <ul style="list-style-type: none;">
         <li *ngFor="let s of savedList">
-          <a href="#" (click)="loadState(s.id); $event.preventDefault();">{{ s.name || s.id }}</a>
+          <a href="#" (click)="loadState(s.id); $event.preventDefault();" style="color:greenyellow">{{ s.name || s.id }}</a>
         </li>
       </ul>
     </div>
@@ -43,76 +47,78 @@
 
   <div class="ui-column-1">
     <br>
-    Click and drag anywhere in the box to start.<br><br>
+    Click and drag your mouse, finger or stylus anywhere in the box to start.<br><br>
+    If the ball is still moving when you release your drag, the canvas will create a persistent directional jet that will last until you drag again.
+    <br><br>
     keys:<br>
-    p - pause/play<br>
-    m - move one frame<br>
-    w - move ball up<br>
-    a - move ball left<br>
-    s - move ball down<br>
-    d - move ball right<br>
-    e - jet up<br>
-    r - jet down<br>
-    t - jet right<br>
-    y - jet left<br>
-    f - full screen
+    p - Pause/Play<br>
+    m - Move one frame <br>
+    w - Move ball up<br>
+    a - Move ball left<br>
+    s - Move ball down<br>
+    d - Move ball right<br>
+    f - Full screen
   </div>
 
   <div class="ui-column-2">
-    <input type="checkbox" [checked]="scene.showParticles" (change)="scene.showParticles = !scene.showParticles">Particles &nbsp;
-    <input type="checkbox" (change)="scene.showGrid = !scene.showGrid">Grid &nbsp;<br>
-    <input type="checkbox" [checked]="scene.compensateDrift" (change)="scene.compensateDrift = !scene.compensateDrift">Compensate Drift &nbsp;
-    <input type="checkbox" [checked]="scene.separateParticles" (change)="scene.separateParticles = !scene.separateParticles">Separate Particles &nbsp;<br>
+    <!-- added template refs and explicit [checked] so component can set DOM state when loading -->
+    <input type="checkbox" #particlesCheckbox [checked]="scene.showParticles" (change)="scene.showParticles = !scene.showParticles">Particles &nbsp;
+    <input type="checkbox" #gridCheckbox [checked]="scene.showGrid" (change)="scene.showGrid = !scene.showGrid">Grid &nbsp;<br>
+    <input type="checkbox" #compensateCheckbox [checked]="scene.compensateDrift" (change)="scene.compensateDrift = !scene.compensateDrift">Compensate Drift &nbsp;
+    <input type="checkbox" #separateCheckbox [checked]="scene.separateParticles" (change)="scene.separateParticles = !scene.separateParticles">Separate Particles &nbsp;<br>
 
     PIC
+    <!-- added refs for ranges so we can programmatically set values -->
     <!-- Use $any to avoid template parser issues and + to coerce to number -->
-    <input type="range" min="0" max="10" value="5" class="slider"
+    <input #flipRange type="range" min="0" max="10" value="5" class="slider"
            (input)="onFlipRatioChange(0.1 * +$any($event.target).value)"> FLIP<br>
 
     Threshold
-    <input type="range" min="0" max="100" value="80" class="slider"
+    <input #thresholdRange type="range" min="0" max="100" value="80" class="slider"
            (input)="onThresholdChange(0.01 * +$any($event.target).value)"> <br>
 
     Gravity
-    <input type="range" min="-10" max="10" value="8" class="slider"
+    <input #gravityRange type="range" min="-10" max="10" value="8" class="slider"
            (input)="scene.gravity = 0.1 * +$any($event.target).value"> <br>
 
-    background color:<br>
-    <input type="range" min="0" max="255" value="20" class="slider" #redFrame
+    Background Color :<br>
+    R <input type="range" min="0" max="255" value="20" class="slider" #redFrame
            (input)="updateBackgroundColor((redFrame.valueAsNumber), greenFrame.valueAsNumber, blueFrame.valueAsNumber)">
-    <input type="range" min="0" max="255" value="50" class="slider" #greenFrame
+    G <input type="range" min="0" max="255" value="50" class="slider" #greenFrame
            (input)="updateBackgroundColor((redFrame.valueAsNumber), greenFrame.valueAsNumber, blueFrame.valueAsNumber)">
-    <input type="range" min="0" max="255" value="35" class="slider" #blueFrame
+    B <input type="range" min="0" max="255" value="35" class="slider" #blueFrame
            (input)="updateBackgroundColor((redFrame.valueAsNumber), greenFrame.valueAsNumber, blueFrame.valueAsNumber)">
-    <div id="colorOutput">RGB</div>
+    
   </div>
 
   <div class="ui-column-3">
-    tank color:<br>
-    <input type="range" min="0" max="10" value="1" class="slider" #sliderR
+    Tank Color:<br>
+    R <input type="range" min="0" max="10" value="1" class="slider" #sliderR
            (input)="updateClearColor(sliderR.valueAsNumber, sliderG.valueAsNumber, sliderB.valueAsNumber)">
-    <input type="range" min="0" max="10" value="3.5" class="slider" #sliderG
+    G <input type="range" min="0" max="10" value="3.5" class="slider" #sliderG
            (input)="updateClearColor(sliderR.valueAsNumber, sliderG.valueAsNumber, sliderB.valueAsNumber)">
-    <input type="range" min="0" max="10" value="2" class="slider" #sliderB
+    B <input type="range" min="0" max="10" value="2" class="slider" #sliderB
            (input)="updateClearColor(sliderR.valueAsNumber, sliderG.valueAsNumber, sliderB.valueAsNumber)">
+    <br>
+        Ball Color:<br>
+    R <input type="range" min="0" max="10" value="10" class="slider" #ballSliderR (input)="updateBallRGB(ballSliderR.valueAsNumber, ballSliderG.valueAsNumber, ballSliderB.valueAsNumber)">
+    G <input type="range" min="0" max="10" value="5" class="slider" #ballSliderG (input)="updateBallRGB(ballSliderR.valueAsNumber, ballSliderG.valueAsNumber, ballSliderB.valueAsNumber)">
+    B <input type="range" min="0" max="10" value="0" class="slider" #ballSliderB (input)="updateBallRGB(ballSliderR.valueAsNumber, ballSliderG.valueAsNumber, ballSliderB.valueAsNumber)">
 
     <br>
-    low density: <br>
-    <input type="range" min="0" max="10" value="10" class="slider" #sliderLowr (input)="updateLowRGB(sliderLowr.valueAsNumber, sliderLowg.valueAsNumber, sliderLowb.valueAsNumber)">
-    <input type="range" min="0" max="10" value="5" class="slider" #sliderLowg (input)="updateLowRGB(sliderLowr.valueAsNumber, sliderLowg.valueAsNumber, sliderLowb.valueAsNumber)">
-    <input type="range" min="0" max="10" value="0" class="slider" #sliderLowb (input)="updateLowRGB(sliderLowr.valueAsNumber, sliderLowg.valueAsNumber, sliderLowb.valueAsNumber)">
+    Low Density Particle Color: <br>
+    R <input type="range" min="0" max="10" value="10" class="slider" #sliderLowr (input)="updateLowRGB(sliderLowr.valueAsNumber, sliderLowg.valueAsNumber, sliderLowb.valueAsNumber)">
+    G <input type="range" min="0" max="10" value="5" class="slider" #sliderLowg (input)="updateLowRGB(sliderLowr.valueAsNumber, sliderLowg.valueAsNumber, sliderLowb.valueAsNumber)">
+    B <input type="range" min="0" max="10" value="0" class="slider" #sliderLowb (input)="updateLowRGB(sliderLowr.valueAsNumber, sliderLowg.valueAsNumber, sliderLowb.valueAsNumber)">
     <br>
 
-    hi density:<br>
-    <input type="range" min="0" max="10" value="4" class="slider" #sliderHighr (input)="updateHighRGB(sliderHighr.valueAsNumber, sliderHighg.valueAsNumber, sliderHighb.valueAsNumber)">
-    <input type="range" min="0" max="10" value="0" class="slider" #sliderHighg (input)="updateHighRGB(sliderHighr.valueAsNumber, sliderHighg.valueAsNumber, sliderHighb.valueAsNumber)">
-    <input type="range" min="0" max="10" value="3" class="slider" #sliderHighb (input)="updateHighRGB(sliderHighr.valueAsNumber, sliderHighg.valueAsNumber, sliderHighb.valueAsNumber)">
+    High Density Particle Color:<br>
+    R <input type="range" min="0" max="10" value="4" class="slider" #sliderHighr (input)="updateHighRGB(sliderHighr.valueAsNumber, sliderHighg.valueAsNumber, sliderHighb.valueAsNumber)">
+    G <input type="range" min="0" max="10" value="0" class="slider" #sliderHighg (input)="updateHighRGB(sliderHighr.valueAsNumber, sliderHighg.valueAsNumber, sliderHighb.valueAsNumber)">
+    B <input type="range" min="0" max="10" value="3" class="slider" #sliderHighb (input)="updateHighRGB(sliderHighr.valueAsNumber, sliderHighg.valueAsNumber, sliderHighb.valueAsNumber)">
     <br>
 
-    ball:<br>
-    <input type="range" min="0" max="10" value="10" class="slider" #ballSliderR (input)="updateBallRGB(ballSliderR.valueAsNumber, ballSliderG.valueAsNumber, ballSliderB.valueAsNumber)">
-    <input type="range" min="0" max="10" value="5" class="slider" #ballSliderG (input)="updateBallRGB(ballSliderR.valueAsNumber, ballSliderG.valueAsNumber, ballSliderB.valueAsNumber)">
-    <input type="range" min="0" max="10" value="0" class="slider" #ballSliderB (input)="updateBallRGB(ballSliderR.valueAsNumber, ballSliderG.valueAsNumber, ballSliderB.valueAsNumber)">
+
   </div>
 </div>
 

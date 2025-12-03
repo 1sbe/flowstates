@@ -1,6 +1,10 @@
 import { Injectable } from '@angular/core';
 import {
-  HttpInterceptor, HttpRequest, HttpHandler, HttpEvent, HttpErrorResponse
+  HttpInterceptor,
+  HttpRequest,
+  HttpHandler,
+  HttpEvent,
+  HttpErrorResponse
 } from '@angular/common/http';
 import { Observable, throwError, BehaviorSubject } from 'rxjs';
 import { catchError, filter, take, switchMap } from 'rxjs/operators';
@@ -14,7 +18,6 @@ export class ApiInterceptor implements HttpInterceptor {
   constructor(private auth: AuthService) {}
 
   intercept(req: HttpRequest<any>, next: HttpHandler): Observable<HttpEvent<any>> {
-    // Attach Authorization header if access token exists
     const access = this.auth.getAccessToken();
     let authReq = req;
     if (access) {
@@ -36,9 +39,9 @@ export class ApiInterceptor implements HttpInterceptor {
 
   private tryRefreshTokenAndRepeat(req: HttpRequest<any>, next: HttpHandler): Observable<HttpEvent<any>> {
     if (this.refreshing) {
-      // wait for refresh to finish then retry
+      // Wait for the in-flight refresh to finish and then retry
       return this.refreshSubject.pipe(
-        filter(token => token != null),
+        filter((token): token is string => token != null),
         take(1),
         switchMap((token) => {
           const cloned = req.clone({ setHeaders: { Authorization: `Bearer ${token}` }});
@@ -48,17 +51,24 @@ export class ApiInterceptor implements HttpInterceptor {
     } else {
       this.refreshing = true;
       this.refreshSubject.next(null);
+
       return this.auth.refreshAccessToken().pipe(
-        switchMap((newAccess: string) => {
+        switchMap((newAccess: string | null) => {
           this.refreshing = false;
           this.refreshSubject.next(newAccess);
+
+          if (!newAccess) {
+            // Refresh failed; ensure logout and propagate an error
+            this.auth.logout();
+            return throwError(() => new Error('Token refresh failed'));
+          }
+
           const cloned = req.clone({ setHeaders: { Authorization: `Bearer ${newAccess}` }});
           return next.handle(cloned);
         }),
         catchError(err => {
           this.refreshing = false;
           this.refreshSubject.next(null);
-          // if refresh failed, force logout
           this.auth.logout();
           return throwError(() => err);
         })

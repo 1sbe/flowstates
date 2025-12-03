@@ -1,38 +1,53 @@
 import { Injectable } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
-import { BehaviorSubject, Observable, throwError, of } from 'rxjs';
-import { tap, catchError, switchMap } from 'rxjs/operators';
+import { BehaviorSubject, Observable, of } from 'rxjs';
+import { tap, catchError, map } from 'rxjs/operators';
 import { environment } from '../../environments/environment';
 
 interface TokenPair { access: string; refresh: string; }
+interface UserInfo { id: number; username: string; email?: string; }
 
 @Injectable({ providedIn: 'root' })
 export class AuthService {
   private tokenKey = 'fs_access';
   private refreshKey = 'fs_refresh';
-  private _auth$ = new BehaviorSubject<boolean>(this.hasAccessToken());
 
-  constructor(private http: HttpClient) {}
+  private _auth$: BehaviorSubject<boolean>;
+  public user$ = new BehaviorSubject<UserInfo | null>(null);
 
-  isAuthenticated$() {
+  constructor(private http: HttpClient) {
+    this._auth$ = new BehaviorSubject<boolean>(this.hasAccessToken());
+    this.loadUserFromToken();
+  }
+
+  isAuthenticated$(): Observable<boolean> {
     return this._auth$.asObservable();
   }
 
   private hasAccessToken(): boolean {
-    return !!localStorage.getItem(this.tokenKey);
+    try {
+      return typeof window !== 'undefined' && !!localStorage.getItem(this.tokenKey);
+    } catch (e) {
+      return false;
+    }
   }
 
-  // current API used by new code
   getAccessToken(): string | null {
-    return localStorage.getItem(this.tokenKey);
+    try {
+      return typeof window !== 'undefined' ? localStorage.getItem(this.tokenKey) : null;
+    } catch {
+      return null;
+    }
   }
 
   getRefreshToken(): string | null {
-    return localStorage.getItem(this.refreshKey);
+    try {
+      return typeof window !== 'undefined' ? localStorage.getItem(this.refreshKey) : null;
+    } catch {
+      return null;
+    }
   }
 
-  // BACKWARDS-COMPATIBILITY: some older components call getToken()
-  // Keep this wrapper so you don't have to change existing callers.
   getToken(): string | null {
     return this.getAccessToken();
   }
@@ -41,45 +56,93 @@ export class AuthService {
     const url = `${environment.apiUrl}/api/auth/token/`;
     return this.http.post<TokenPair>(url, { username, password }).pipe(
       tap(tokens => {
-        if (tokens?.access) {
-          localStorage.setItem(this.tokenKey, tokens.access);
-        }
-        if (tokens?.refresh) {
-          localStorage.setItem(this.refreshKey, tokens.refresh);
-        }
+        if (tokens?.access) localStorage.setItem(this.tokenKey, tokens.access);
+        if (tokens?.refresh) localStorage.setItem(this.refreshKey, tokens.refresh);
         this._auth$.next(true);
+        this.loadUserFromToken();
+        this.fetchUserFromServer().subscribe(() => {}, () => {});
       }),
       catchError(err => {
-        // bubble error up
-        return throwError(() => err);
+        throw err;
       })
     );
   }
 
   logout() {
-    localStorage.removeItem(this.tokenKey);
-    localStorage.removeItem(this.refreshKey);
+    try {
+      localStorage.removeItem(this.tokenKey);
+      localStorage.removeItem(this.refreshKey);
+    } catch {}
     this._auth$.next(false);
+    this.user$.next(null);
   }
 
-  refreshAccessToken(): Observable<string> {
+  /**
+   * Refresh the access token using the stored refresh token.
+   * Returns Observable<string|null> where the string is the new access token (or null on failure).
+   */
+  refreshAccessToken(): Observable<string | null> {
     const refresh = this.getRefreshToken();
     if (!refresh) {
       this.logout();
-      return throwError(() => new Error('No refresh token'));
+      return of(null);
     }
     const url = `${environment.apiUrl}/api/auth/token/refresh/`;
     return this.http.post<{ access: string }>(url, { refresh }).pipe(
-      tap(res => {
-        if (res && res.access) {
-          localStorage.setItem(this.tokenKey, res.access);
+      // map the HTTP response to the access token (or null)
+      map(res => (res && res.access) ? res.access : null),
+      tap((access) => {
+        if (access) {
+          try { localStorage.setItem(this.tokenKey, access); } catch {}
           this._auth$.next(true);
+          this.loadUserFromToken();
+          this.fetchUserFromServer().subscribe(() => {}, () => {});
         }
       }),
-      switchMap(res => of(res.access)),
       catchError(err => {
         this.logout();
-        return throwError(() => err);
+        // return a null observable so callers receive a value consistent with signature
+        return of(null);
+      })
+    );
+  }
+
+  private decodeJwtPayload(token: string | null): any | null {
+    if (!token) return null;
+    try {
+      const parts = token.split('.');
+      if (parts.length !== 3) return null;
+      const payload = parts[1].replace(/-/g, '+').replace(/_/g, '/');
+      const json = decodeURIComponent(atob(payload).split('').map(c =>
+        '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2)
+      ).join(''));
+      return JSON.parse(json);
+    } catch {
+      return null;
+    }
+  }
+
+  private loadUserFromToken() {
+    const token = this.getAccessToken();
+    const payload = this.decodeJwtPayload(token);
+    if (payload) {
+      const username = payload.username || payload.user_name || payload.sub || null;
+      const userId = payload.user_id ?? payload.sub ?? null;
+      if (username || userId) {
+        this.user$.next({ id: userId ?? 0, username: username ?? '' });
+        return;
+      }
+    }
+    this.user$.next(null);
+  }
+
+  fetchUserFromServer(): Observable<UserInfo | null> {
+    const url = `${environment.apiUrl}/api/auth/user/`;
+    return this.http.get<UserInfo>(url).pipe(
+      tap(u => this.user$.next(u)),
+      catchError(_ => {
+        this.user$.next(null);
+        return of(null);
       })
     );
   }
