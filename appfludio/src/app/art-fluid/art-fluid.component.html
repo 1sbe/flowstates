@@ -20,6 +20,7 @@
   <div style="grid-column: 3; text-align: right; padding-right: 2vw;">
   
 <ng-container *ngIf="!(auth.isAuthenticated$() | async)">
+    To save and load states of the simulator,
       <button (click)="router.navigate(['/login'])">Login</button>
     </ng-container>
 
@@ -91,7 +92,7 @@
     
   </div>
 
-  <div class="ui-column-3">
+  <div class="ui-column-3" style="align-self: last baseline;">
     Tank Color:<br>
     R <input type="range" min="0" max="10" value="1" class="slider" #sliderR
            (input)="updateClearColor(sliderR.valueAsNumber, sliderG.valueAsNumber, sliderB.valueAsNumber)">

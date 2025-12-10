@@ -146,4 +146,21 @@ export class AuthService {
       })
     );
   }
+
+    register(username: string, password: string, email?: string): Observable<any> {
+    const url = `${environment.apiUrl}/api/auth/register/`;
+    const body: any = { username, password };
+    if (email) body.email = email;
+    return this.http.post<any>(url, body).pipe(
+      tap(res => {
+      }),
+      catchError(err => {
+        throw err;
+      })
+    );
+  }
+
+
+
+
 }

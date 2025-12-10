@@ -1,19 +1,56 @@
-<form [formGroup]="form" (ngSubmit)="submit()" class="login-form">
-  <div>
-    <label for="username">Username</label><br />
-    <input id="username" formControlName="username" autocomplete="username" />
-  </div>
+<!-- Login + Create Account UI -->
+<div class="auth-wrapper">
+  <h2 *ngIf="!createMode">Login</h2>
+  <br><br>
+  <h2 *ngIf="createMode">Create an account</h2>
+<br><br>
+  <div *ngIf="error" class="error">{{ error }}</div>
 
-  <div style="margin-top:0.5rem;">
-    <label for="password">Password</label><br />
-    <input id="password" type="password" formControlName="password" autocomplete="current-password" />
-  </div>
-
-  <div style="margin-top:0.75rem;">
+  <!-- LOGIN FORM -->
+  <form *ngIf="!createMode" [formGroup]="loginForm" (ngSubmit)="submit()">
+    <label>
+      Username
+      <input formControlName="username" autocomplete="username" />
+    </label>
+    <br><br>
+    <label>
+      Password
+      <input type="password" formControlName="password" autocomplete="current-password" />
+    </label>
+<br><br>
     <button type="submit" [disabled]="loading">Login</button>
-  </div>
+    <br><br>
+    <button type="button" (click)="toggleCreate()" [disabled]="loading">Create an account</button>
+  </form>
 
-  <div *ngIf="error" class="error" style="color:#f66; margin-top:0.5rem;">
-    {{ error }}
-  </div>
-</form>
+  <!-- REGISTER FORM -->
+  <form *ngIf="createMode" [formGroup]="registerForm" (ngSubmit)="createAccount()">
+    <label>
+      Username
+      <input formControlName="username" autocomplete="username" />
+    </label>
+<br><br>
+    <label>
+      Email (optional)
+      <input formControlName="email" autocomplete="email" />
+    </label>
+<br><br>
+    <label>
+      Password
+      <input type="password" formControlName="password" autocomplete="new-password" />
+    </label>
+<br><br>
+    <label>
+      Confirm Password
+      <input type="password" formControlName="passwordConfirm" autocomplete="new-password" />
+    </label>
+<br><br>
+    <div *ngIf="registerForm.hasError('passwordMismatch')" class="error">Passwords do not match</div>
+<br><br>
+    <button type="submit" [disabled]="loading">Create account</button>
+    <br><br>
+    <button type="button" (click)="toggleCreate()" [disabled]="loading">Back to login</button>
+  </form>
+
+  <div *ngIf="loading" class="loading">Working…</div>
+</div>
